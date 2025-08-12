@@ -114,7 +114,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const data: any = await aiResponse.json();
+    interface AIResponseData {
+      candidates?: Array<{
+        content?: {
+          parts?: Array<{
+            text?: string;
+          }>;
+        };
+      }>;
+    }
+    const data: AIResponseData = await aiResponse.json();
     const content: string | undefined = data?.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!content) {
       return NextResponse.json({ success: false, error: "Empty AI response" }, { status: 502 });
@@ -141,9 +150,31 @@ export async function POST(request: Request) {
       );
     }
 
+    interface Example {
+      jp: string;
+      vi: string;
+    }
+
+    interface RawVocabEntry {
+      surfaceForm?: string;
+      reading?: string;
+      lemma?: string;
+      meaningVi?: string;
+      partOfSpeech?: string;
+      jlpt?: string;
+      examples?: Array<Example>;
+    }
+
+    interface RawGrammarEntry {
+      pattern?: string;
+      explanationVi?: string;
+      usage?: string;
+      examples?: Array<Example>;
+    }
+
     const normalized: AnalyzeResult = {
       vocab: parsed.vocab
-        .map((v: any) => ({
+        .map((v: RawVocabEntry) => ({
           surfaceForm: String(v.surfaceForm || "").trim(),
           reading: v.reading ? String(v.reading).trim() : undefined,
           lemma: v.lemma ? String(v.lemma).trim() : undefined,
@@ -152,20 +183,20 @@ export async function POST(request: Request) {
           jlpt: v.jlpt ? String(v.jlpt).trim() : undefined,
           examples: Array.isArray(v.examples)
             ? v.examples
-                .map((ex: any) => ({ jp: String(ex.jp || "").trim(), vi: String(ex.vi || "").trim() }))
-                .filter((ex: any) => ex.jp && ex.vi)
+                .map((ex: Example) => ({ jp: String(ex.jp || "").trim(), vi: String(ex.vi || "").trim() }))
+                .filter((ex: Example) => ex.jp && ex.vi)
             : [],
         }))
         .filter((v: VocabEntry) => v.surfaceForm && v.meaningVi),
       grammar: parsed.grammar
-        .map((g: any) => ({
+        .map((g: RawGrammarEntry) => ({
           pattern: String(g.pattern || "").trim(),
           explanationVi: String(g.explanationVi || "").trim(),
           usage: g.usage ? String(g.usage).trim() : undefined,
           examples: Array.isArray(g.examples)
             ? g.examples
-                .map((ex: any) => ({ jp: String(ex.jp || "").trim(), vi: String(ex.vi || "").trim() }))
-                .filter((ex: any) => ex.jp && ex.vi)
+                .map((ex: Example) => ({ jp: String(ex.jp || "").trim(), vi: String(ex.vi || "").trim() }))
+                .filter((ex: Example) => ex.jp && ex.vi)
             : [],
         }))
         .filter((g: GrammarEntry) => g.pattern && g.explanationVi),

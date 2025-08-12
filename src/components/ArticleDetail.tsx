@@ -271,7 +271,12 @@ export default function ArticleDetail({ articleId }: ArticleDetailProps) {
             <div className="prose prose-lg max-w-none">
               {article.imageUrl && (
                 <div className="mb-6">
-                  <img src={article.imageUrl} alt={article.title} className="w-full h-auto rounded-lg shadow-md" />
+                  <Image
+                    objectFit="cover"
+                    src={article.imageUrl}
+                    alt={article.title}
+                    className="w-full h-auto rounded-lg shadow-md"
+                  />
                 </div>
               )}
 
