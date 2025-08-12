@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -51,6 +51,29 @@ export default function ArticleDetail({ articleId }: ArticleDetailProps) {
   const [relatedArticles, setRelatedArticles] = useState<RelatedArticle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [analysis, setAnalysis] = useState<
+    | {
+        vocab: {
+          surfaceForm: string;
+          reading?: string;
+          lemma?: string;
+          meaningVi: string;
+          partOfSpeech?: string;
+          jlpt?: string;
+          examples?: Array<{ jp: string; vi: string }>;
+        }[];
+        grammar: {
+          pattern: string;
+          explanationVi: string;
+          usage?: string;
+          examples?: Array<{ jp: string; vi: string }>;
+        }[];
+      }
+    | null
+  >(null);
+  const [selectedVocabIndex, setSelectedVocabIndex] = useState<number | null>(null);
   const router = useRouter();
 
   const fetchArticleDetail = async () => {
@@ -79,6 +102,42 @@ export default function ArticleDetail({ articleId }: ArticleDetailProps) {
   useEffect(() => {
     fetchArticleDetail();
   }, [articleId]);
+
+  // Trigger AI analysis after article is loaded
+  useEffect(() => {
+    const runAnalysis = async () => {
+      if (!article?.content) return;
+      try {
+        setAnalyzing(true);
+        setAnalysisError(null);
+        const response = await fetch("/api/ai/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: article.content,
+            sentences: article.contentSentences,
+            maxVocab: 40,
+            maxGrammar: 12,
+          }),
+        });
+
+        const data = await response.json();
+        if (!data.success) {
+          setAnalysis(null);
+          setAnalysisError(data.error || "Không thể phân tích AI");
+          return;
+        }
+        setAnalysis(data.analysis);
+      } catch (e) {
+        console.error("AI analyze error", e);
+        setAnalysisError("Lỗi mạng khi gọi AI");
+      } finally {
+        setAnalyzing(false);
+      }
+    };
+
+    runAnalysis();
+  }, [article?.content, article?.contentSentences]);
 
   const formatDate = (dateString: string) => {
     try {
@@ -223,17 +282,12 @@ export default function ArticleDetail({ articleId }: ArticleDetailProps) {
                 </div>
               )}
 
-              {article.contentSentences && article.contentSentences.length > 0 ? (
-                <div className="text-gray-700 leading-relaxed text-lg">
-                  {article.contentSentences.map((sentence, idx) => (
-                    <p key={idx} className="mb-2 whitespace-pre-line">
-                      {sentence}
-                    </p>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-gray-700 leading-relaxed text-lg whitespace-pre-line">{article.content}</div>
-              )}
+              <HighlightedContent
+                text={article.content}
+                sentences={article.contentSentences}
+                vocab={analysis?.vocab || []}
+                onClickVocab={(index) => setSelectedVocabIndex(index)}
+              />
             </div>
 
             {/* Article Footer */}
@@ -267,6 +321,31 @@ export default function ArticleDetail({ articleId }: ArticleDetailProps) {
                 </a>
               </div>
             </footer>
+            {/* Grammar Section */}
+            {analysis?.grammar && analysis.grammar.length > 0 && (
+              <section className="mt-10">
+                <h3 className="text-xl font-semibold text-gray-900 mb-4">Ngữ pháp xuất hiện trong bài</h3>
+                <div className="space-y-4">
+                  {analysis.grammar.map((g, i) => (
+                    <div key={i} className="rounded-md border border-gray-200 p-4">
+                      <div className="font-medium text-gray-900">{g.pattern}</div>
+                      <div className="text-gray-700 text-sm mt-1">{g.explanationVi}</div>
+                      {g.usage && <div className="text-gray-600 text-sm mt-1 italic">{g.usage}</div>}
+                      {g.examples && g.examples.length > 0 && (
+                        <ul className="mt-2 list-disc list-inside text-sm text-gray-700 space-y-1">
+                          {g.examples.map((ex, j) => (
+                            <li key={j}>
+                              <span className="text-gray-900">{ex.jp}</span>
+                              <span className="text-gray-500"> — {ex.vi}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
           </article>
         </div>
 
@@ -302,6 +381,198 @@ export default function ArticleDetail({ articleId }: ArticleDetailProps) {
               <div className="text-gray-500 text-center py-8">Không có bài viết liên quan</div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Vocab Modal */}
+      {selectedVocabIndex !== null && analysis?.vocab?.[selectedVocabIndex] && (
+        <VocabModal
+          vocab={analysis.vocab[selectedVocabIndex]}
+          onClose={() => setSelectedVocabIndex(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------- HighlightedContent Component ----------
+function HighlightedContent({
+  text,
+  sentences,
+  vocab,
+  onClickVocab,
+}: {
+  text: string;
+  sentences?: string[];
+  vocab: {
+    surfaceForm: string;
+    reading?: string;
+    lemma?: string;
+    meaningVi: string;
+    partOfSpeech?: string;
+    jlpt?: string;
+    examples?: Array<{ jp: string; vi: string }>;
+  }[];
+  onClickVocab: (index: number) => void;
+}) {
+  const rangesBySentence = useMemo(() => {
+    const items = vocab
+      .map((v, i) => ({ ...v, index: i }))
+      .filter((v) => v.surfaceForm && v.surfaceForm.trim().length > 0);
+
+    const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    const findRanges = (s: string) => {
+      type Range = { start: number; end: number; index: number; text: string };
+      const found: Range[] = [];
+      items.forEach((it) => {
+        const needle = it.surfaceForm.trim();
+        if (!needle) return;
+        const rx = new RegExp(escapeRegex(needle), "g");
+        let match: RegExpExecArray | null;
+        while ((match = rx.exec(s)) !== null) {
+          found.push({ start: match.index, end: match.index + match[0].length, index: it.index, text: match[0] });
+          // Avoid zero-length loops
+          if (rx.lastIndex === match.index) rx.lastIndex++;
+        }
+      });
+
+      // Resolve overlaps: sort by start asc, length desc; greedily keep non-overlapping
+      found.sort((a, b) => (a.start - b.start) || (b.end - b.start) - (a.end - a.start));
+      const merged: Range[] = [];
+      let lastEnd = -1;
+      for (const r of found) {
+        if (r.start >= lastEnd) {
+          merged.push(r);
+          lastEnd = r.end;
+        }
+      }
+      return merged;
+    };
+
+    const sentencesArray = Array.isArray(sentences) && sentences.length > 0 ? sentences : [text];
+    return sentencesArray.map((s) => ({ s, ranges: findRanges(s) }));
+  }, [text, sentences, vocab]);
+
+  return (
+    <div className="text-gray-700 leading-relaxed text-lg">
+      {rangesBySentence.map(({ s, ranges }, idx) => {
+        if (ranges.length === 0) {
+          return (
+            <p key={idx} className="mb-2 whitespace-pre-line">
+              {s}
+            </p>
+          );
+        }
+        const nodes: React.ReactNode[] = [];
+        let cursor = 0;
+        ranges.forEach((r, i) => {
+          if (cursor < r.start) {
+            nodes.push(<span key={`t-${i}-pre`}>{s.slice(cursor, r.start)}</span>);
+          }
+          nodes.push(
+            <button
+              key={`h-${i}`}
+              type="button"
+              onClick={() => onClickVocab(r.index)}
+              className="underline decoration-dotted underline-offset-4 hover:bg-yellow-50 rounded px-0.5 transition-colors"
+              title="Xem giải thích"
+            >
+              {s.slice(r.start, r.end)}
+            </button>
+          );
+          cursor = r.end;
+        });
+        if (cursor < s.length) {
+          nodes.push(<span key={`t-post`}>{s.slice(cursor)}</span>);
+        }
+        return (
+          <p key={idx} className="mb-2 whitespace-pre-line">
+            {nodes}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------- VocabModal Component ----------
+function VocabModal({
+  vocab,
+  onClose,
+}: {
+  vocab: {
+    surfaceForm: string;
+    reading?: string;
+    lemma?: string;
+    meaningVi: string;
+    partOfSpeech?: string;
+    jlpt?: string;
+    examples?: Array<{ jp: string; vi: string }>;
+  };
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative z-10 w-full sm:max-w-lg bg-white rounded-t-2xl sm:rounded-2xl shadow-lg p-6">
+        <div className="flex items-start justify-between">
+          <h4 className="text-xl font-semibold text-gray-900">{vocab.surfaceForm}</h4>
+          <button
+            onClick={onClose}
+            className="text-gray-500 hover:text-gray-700"
+            aria-label="Đóng"
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="mt-2 text-sm text-gray-600 space-y-1">
+          {vocab.reading && (
+            <div>
+              <span className="font-medium text-gray-700">Cách đọc:</span> {vocab.reading}
+            </div>
+          )}
+          {vocab.lemma && (
+            <div>
+              <span className="font-medium text-gray-700">Dạng từ điển:</span> {vocab.lemma}
+            </div>
+          )}
+          {vocab.partOfSpeech && (
+            <div>
+              <span className="font-medium text-gray-700">Loại từ:</span> {vocab.partOfSpeech}
+            </div>
+          )}
+          {vocab.jlpt && (
+            <div>
+              <span className="font-medium text-gray-700">JLPT:</span> {vocab.jlpt}
+            </div>
+          )}
+        </div>
+        <div className="mt-4">
+          <div className="text-gray-800"><span className="font-medium">Nghĩa:</span> {vocab.meaningVi}</div>
+        </div>
+        {vocab.examples && vocab.examples.length > 0 && (
+          <div className="mt-4">
+            <div className="font-medium text-gray-900 mb-2">Ví dụ</div>
+            <ul className="space-y-2 text-sm text-gray-700">
+              {vocab.examples.map((ex, i) => (
+                <li key={i} className="bg-gray-50 rounded-md p-2">
+                  <div className="text-gray-900">{ex.jp}</div>
+                  <div className="text-gray-600">{ex.vi}</div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <div className="mt-6 flex justify-end">
+          <button
+            onClick={onClose}
+            className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+          >
+            Đóng
+          </button>
         </div>
       </div>
     </div>

@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
 
     articleData.contentParagraphs = paragraphs;
     articleData.contentSentences = sentences;
-    console.log("articleData.content", articleData.content);
+    // console.log("articleData.content", articleData.content);
 
     // Extract publish date
     const dateSelectors = [
