@@ -53,26 +53,23 @@ export default function ArticleDetail({ articleId }: ArticleDetailProps) {
   const [error, setError] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
-  const [analysis, setAnalysis] = useState<
-    | {
-        vocab: {
-          surfaceForm: string;
-          reading?: string;
-          lemma?: string;
-          meaningVi: string;
-          partOfSpeech?: string;
-          jlpt?: string;
-          examples?: Array<{ jp: string; vi: string }>;
-        }[];
-        grammar: {
-          pattern: string;
-          explanationVi: string;
-          usage?: string;
-          examples?: Array<{ jp: string; vi: string }>;
-        }[];
-      }
-    | null
-  >(null);
+  const [analysis, setAnalysis] = useState<{
+    vocab: {
+      surfaceForm: string;
+      reading?: string;
+      lemma?: string;
+      meaningVi: string;
+      partOfSpeech?: string;
+      jlpt?: string;
+      examples?: Array<{ jp: string; vi: string }>;
+    }[];
+    grammar: {
+      pattern: string;
+      explanationVi: string;
+      usage?: string;
+      examples?: Array<{ jp: string; vi: string }>;
+    }[];
+  } | null>(null);
   const [selectedVocabIndex, setSelectedVocabIndex] = useState<number | null>(null);
   const router = useRouter();
 
@@ -116,12 +113,14 @@ export default function ArticleDetail({ articleId }: ArticleDetailProps) {
           body: JSON.stringify({
             content: article.content,
             sentences: article.contentSentences,
-            maxVocab: 40,
+            maxVocab: 100,
             maxGrammar: 12,
           }),
         });
 
         const data = await response.json();
+        console.log("AI analysis response:", data);
+
         if (!data.success) {
           setAnalysis(null);
           setAnalysisError(data.error || "Không thể phân tích AI");
@@ -386,10 +385,7 @@ export default function ArticleDetail({ articleId }: ArticleDetailProps) {
 
       {/* Vocab Modal */}
       {selectedVocabIndex !== null && analysis?.vocab?.[selectedVocabIndex] && (
-        <VocabModal
-          vocab={analysis.vocab[selectedVocabIndex]}
-          onClose={() => setSelectedVocabIndex(null)}
-        />
+        <VocabModal vocab={analysis.vocab[selectedVocabIndex]} onClose={() => setSelectedVocabIndex(null)} />
       )}
     </div>
   );
@@ -438,7 +434,7 @@ function HighlightedContent({
       });
 
       // Resolve overlaps: sort by start asc, length desc; greedily keep non-overlapping
-      found.sort((a, b) => (a.start - b.start) || (b.end - b.start) - (a.end - a.start));
+      found.sort((a, b) => a.start - b.start || b.end - b.start - (a.end - a.start));
       const merged: Range[] = [];
       let lastEnd = -1;
       for (const r of found) {
@@ -518,11 +514,7 @@ function VocabModal({
       <div className="relative z-10 w-full sm:max-w-lg bg-white rounded-t-2xl sm:rounded-2xl shadow-lg p-6">
         <div className="flex items-start justify-between">
           <h4 className="text-xl font-semibold text-gray-900">{vocab.surfaceForm}</h4>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700"
-            aria-label="Đóng"
-          >
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700" aria-label="Đóng">
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
@@ -551,7 +543,9 @@ function VocabModal({
           )}
         </div>
         <div className="mt-4">
-          <div className="text-gray-800"><span className="font-medium">Nghĩa:</span> {vocab.meaningVi}</div>
+          <div className="text-gray-800">
+            <span className="font-medium">Nghĩa:</span> {vocab.meaningVi}
+          </div>
         </div>
         {vocab.examples && vocab.examples.length > 0 && (
           <div className="mt-4">

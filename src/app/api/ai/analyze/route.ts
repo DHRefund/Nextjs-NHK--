@@ -36,29 +36,23 @@ const GEMINI_MODEL = process.env.GOOGLE_GEMINI_MODEL || "gemini-1.5-flash";
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as AnalyzeRequestBody;
+    console.log("/api/ai/analyze request body:", body);
 
     if (!body || !body.content || body.content.trim().length === 0) {
-      return NextResponse.json(
-        { success: false, error: "Missing 'content' in request body" },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: "Missing 'content' in request body" }, { status: 400 });
     }
 
     if (!GEMINI_API_KEY) {
-      return NextResponse.json(
-        { success: false, error: "Server is missing GOOGLE_GEMINI_API_KEY" },
-        { status: 500 }
-      );
+      return NextResponse.json({ success: false, error: "Server is missing GOOGLE_GEMINI_API_KEY" }, { status: 500 });
     }
 
     const maxVocab = Math.min(Math.max(body.maxVocab ?? 25, 5), 60); // clamp 5..60
     const maxGrammar = Math.min(Math.max(body.maxGrammar ?? 10, 0), 30); // clamp 0..30
 
-    const sentencesJoined = Array.isArray(body.sentences) && body.sentences.length > 0
-      ? body.sentences.join("\n")
-      : "";
+    const sentencesJoined = Array.isArray(body.sentences) && body.sentences.length > 0 ? body.sentences.join("\n") : "";
 
-    const systemPrompt = `Bạn là trợ lý dạy tiếng Nhật cho người Việt.\n` +
+    const systemPrompt =
+      `Bạn là trợ lý dạy tiếng Nhật cho người Việt.\n` +
       `Đầu ra phải là JSON hợp lệ, KHÔNG kèm giải thích, KHÔNG markdown.\n` +
       `Hãy trích xuất từ vựng (kanji/từ) và ngữ pháp quan trọng từ bài báo tiếng Nhật.\n` +
       `Chỉ chọn những mục đáng học (tránh từ quá cơ bản, filler).\n` +
@@ -123,10 +117,7 @@ export async function POST(request: Request) {
     const data: any = await aiResponse.json();
     const content: string | undefined = data?.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!content) {
-      return NextResponse.json(
-        { success: false, error: "Empty AI response" },
-        { status: 502 }
-      );
+      return NextResponse.json({ success: false, error: "Empty AI response" }, { status: 502 });
     }
 
     let parsed: AnalyzeResult | null = null;
@@ -183,11 +174,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, analysis: normalized });
   } catch (error) {
     console.error("/api/ai/analyze error:", error);
-    return NextResponse.json(
-      { success: false, error: "Unexpected server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: "Unexpected server error" }, { status: 500 });
   }
 }
-
-
