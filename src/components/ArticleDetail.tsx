@@ -272,7 +272,8 @@ export default function ArticleDetail({ articleId }: ArticleDetailProps) {
               {article.imageUrl && (
                 <div className="mb-6">
                   <Image
-                    objectFit="cover"
+                    width={800}
+                    height={450}
                     src={article.imageUrl}
                     alt={article.title}
                     className="w-full h-auto rounded-lg shadow-md"
